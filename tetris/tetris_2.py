@@ -1,277 +1,471 @@
 import pygame
 import random
-from typing import List, Any, Optional
 
-# Initialize Pygame
+# Initialize pygame
 pygame.init()
 
-# Constants
-SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 600
+# Layout Constants
 BLOCK_SIZE = 30
-GRID_WIDTH = 15
+GRID_WIDTH = 10
 GRID_HEIGHT = 20
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-BG_COLOR = (30, 30, 60)
-PANEL_COLOR = (45, 45, 80)
-GRAY = (100, 100, 130)
-YELLOW = (255, 255, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
+# Calculated Sizes and Offsets
+GRID_X_OFFSET = 50
+GRID_Y_OFFSET = 50
+SIDEBAR_X = 390
+SIDEBAR_Y = 50
+SIDEBAR_WIDTH = 260
+SIDEBAR_HEIGHT = 600
+
+SCREEN_WIDTH = 700
+SCREEN_HEIGHT = 700
+
+# Color Sentinels & Themes (Neon Synthwave Style)
+BLACK = (0, 0, 0)                  # Logical sentinel for empty grid cell
+BACKGROUND_COLOR = (12, 10, 20)     # Deep dark space blue
+GRID_BG_COLOR = (18, 16, 28)        # Slightly lighter container blue
+GRID_LINE_COLOR = (28, 25, 45)      # Grid cell divider line
+BORDER_COLOR = (74, 56, 117)        # Glowing purple borders
+GHOST_COLOR = (50, 45, 75)          # Sleek shadow outline color for the ghost piece
+TEXT_PRIMARY = (255, 255, 255)      # Bright white for stats values
+TEXT_MUTED = (140, 130, 175)        # Light violet-grey for stat labels
+
+# Premium Glowing Neon Piece Colors
 COLORS = [
-    (0, 255, 255), (255, 255, 0), (128, 0, 128),
-    (0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 165, 0)
+    (0, 229, 255),    # I - Cyan
+    (255, 215, 0),    # O - Gold
+    (186, 104, 200),  # T - Purple
+    (102, 255, 0),    # S - Green
+    (255, 46, 99),     # Z - Red
+    (37, 117, 252),   # J - Blue
+    (255, 107, 0),    # L - Orange
 ]
 
-DIFFICULTIES = {
-    "Easy": {"speed": 1200, "dec": 50, "color": GREEN},
-    "Medium": {"speed": 800, "dec": 100, "color": YELLOW},
-    "Hard": {"speed": 400, "dec": 150, "color": RED}
-}
-
-
-# Tetrominoes
+# Tetromino Shapes
 SHAPES = [
-    [[1, 1, 1, 1]],
-    [[1, 1], [1, 1]],
-    [[0, 1, 0], [1, 1, 1]],
-    [[0, 1, 1], [1, 1, 0]],
-    [[1, 1, 0], [0, 1, 1]],
-    [[1, 0, 0], [1, 1, 1]],
-    [[0, 0, 1], [1, 1, 1]]
+    [[1, 1, 1, 1]],  # I
+    [[1, 1], [1, 1]],  # O
+    [[0, 1, 0], [1, 1, 1]],  # T
+    [[0, 1, 1], [1, 1, 0]],  # S
+    [[1, 1, 0], [0, 1, 1]],  # Z
+    [[1, 0, 0], [1, 1, 1]],  # J
+    [[0, 0, 1], [1, 1, 1]],  # L
 ]
+
 
 class Piece:
-    def __init__(self):
-        self.shape = random.choice(SHAPES)
-        self.color = random.choice(COLORS)
-        self.x = GRID_WIDTH // 2 - len(self.shape[0]) // 2
-        self.y = 0
+    def __init__(self, x, y, shape_idx):
+        self.x = x
+        self.y = y
+        self.shape = SHAPES[shape_idx]
+        self.color = COLORS[shape_idx]
+        self.shape_idx = shape_idx
 
     def rotate(self):
         self.shape = [list(row) for row in zip(*self.shape[::-1])]
 
-def create_grid(w: int, h: int) -> List[List[Any]]:
-    return [[None for _ in range(w)] for _ in range(h)]
 
-def check_collision(grid, piece, x, y):
-    for r, row in enumerate(piece.shape):
-        for c, val in enumerate(row):
-            if val:
-                if (x + c < 0 or x + c >= GRID_WIDTH or
-                    y + r < 0 or y + r >= GRID_HEIGHT or
-                    grid[y + r][x + c] is not None):
-                    return True
-    return False
+class Tetris:
+    def __init__(self):
+        self.grid = [[BLACK for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+        self.score = 0
+        self.level = 1
+        self.lines_cleared = 0
+        self.game_over = False
+        self.paused = False
+        self.current_piece = self.new_piece()
+        self.next_piece = self.new_piece()
+        self.hold_piece = None
+        self.can_hold = True
 
-def clear_lines(grid):
-    lines_to_clear = []
-    for y, row in enumerate(grid):
-        if all(cell is not None for cell in row):
-            lines_to_clear.append(y)
-    
-    score_increment = 0
-    if len(lines_to_clear) > 0:
-        # Standard scoring: 100, 300, 500, 800 for 1, 2, 3, 4 lines
-        score_increment = [0, 100, 300, 500, 800][len(lines_to_clear)]
-    
-    for y in sorted(lines_to_clear, reverse=True):
-        del grid[y]
-        grid.insert(0, [None for _ in range(GRID_WIDTH)])
-    return grid, score_increment
+    def new_piece(self):
+        shape_idx = random.randint(0, len(SHAPES) - 1)
+        piece = Piece(GRID_WIDTH // 2 - len(SHAPES[shape_idx][0]) // 2, 0, shape_idx)
+        return piece
 
-def draw_text(screen, text, font, color, x, y, center=False):
-    surf = font.render(text, True, color)
-    rect = surf.get_rect()
-    if center:
-        rect.center = (x, y)
-    else:
-        rect.topleft = (x, y)
-    screen.blit(surf, rect)
+    def check_collision(self, dx=0, dy=0, piece=None):
+        if piece is None:
+            piece = self.current_piece
 
-def show_menu(screen, font):
-    selected = 0
-    options = list(DIFFICULTIES.keys())
-    
-    while True:
-        screen.fill(BG_COLOR)
-        draw_text(screen, "TETRIS PRO", font, WHITE, SCREEN_WIDTH // 2, 150, True)
-        draw_text(screen, "Select Difficulty:", font, WHITE, SCREEN_WIDTH // 2, 220, True)
-        
-        for i, option in enumerate(options):
-            color = DIFFICULTIES[option]["color"] if i == selected else WHITE
-            draw_text(screen, option, font, color, SCREEN_WIDTH // 2, 280 + i * 50, True)
-        
-        pygame.display.flip()
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return None
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    selected = (selected - 1) % len(options)
-                elif event.key == pygame.K_DOWN:
-                    selected = (selected + 1) % len(options)
-                elif event.key == pygame.K_RETURN:
-                    return options[selected]
+        for y, row in enumerate(piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    nx, ny = piece.x + x + dx, piece.y + y + dy
+
+                    # Boundary and Wall Collisions
+                    if nx < 0 or nx >= GRID_WIDTH or ny >= GRID_HEIGHT:
+                        return True
+
+                    # Grid Occupancy (only if ny is within valid range)
+                    if ny >= 0 and self.grid[ny][nx] != BLACK:
+                        return True
+        return False
+
+    def freeze(self):
+        for y, row in enumerate(self.current_piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    if self.current_piece.y + y < 0:
+                        self.game_over = True
+                        return
+                    self.grid[self.current_piece.y + y][self.current_piece.x + x] = (
+                        self.current_piece.color
+                    )
+
+        self.clear_lines()
+        self.current_piece = self.next_piece
+        self.next_piece = self.new_piece()
+        self.can_hold = True
+        if self.check_collision():
+            self.game_over = True
+
+    def clear_lines(self):
+        lines_cleared = 0
+        y = GRID_HEIGHT - 1
+        while y >= 0:
+            if all(cell != BLACK for cell in self.grid[y]):
+                lines_cleared += 1
+                del self.grid[y]
+                self.grid.insert(0, [BLACK for _ in range(GRID_WIDTH)])
+            else:
+                y -= 1
+
+        if lines_cleared > 0:
+            self.lines_cleared += lines_cleared
+            score_map = {1: 100, 2: 300, 3: 500, 4: 800}
+            self.score += score_map.get(lines_cleared, 0) * self.level
+            self.level = (self.lines_cleared // 10) + 1
+
+    def move(self, dx, dy):
+        if not self.check_collision(dx, dy):
+            self.current_piece.x += dx
+            self.current_piece.y += dy
+            return True
+        elif dy > 0:
+            self.freeze()
+        return False
+
+    def hard_drop(self):
+        while not self.check_collision(0, 1):
+            self.current_piece.y += 1
+        self.freeze()
+
+    def rotate(self):
+        old_shape = self.current_piece.shape
+        old_x = self.current_piece.x
+        old_y = self.current_piece.y
+        self.current_piece.rotate()
+
+        # Multi-kick offset list [dx, dy] testing standard wall kicks & floor kicks
+        kicks = [
+            [0, 0],    # No kick
+            [-1, 0],   # Kick left 1
+            [1, 0],    # Kick right 1
+            [0, -1],   # Kick up 1 (floor kick)
+            [-2, 0],   # Kick left 2 (for horizontal I piece near wall)
+            [2, 0],    # Kick right 2
+            [0, -2],   # Kick up 2 (floor kick for vertical pieces)
+        ]
+
+        for dx, dy in kicks:
+            if not self.check_collision(dx, dy):
+                self.current_piece.x += dx
+                self.current_piece.y += dy
+                return
+
+        # If all kicks fail, revert to previous state
+        self.current_piece.shape = old_shape
+        self.current_piece.x = old_x
+        self.current_piece.y = old_y
+
+    def hold(self):
+        if not self.can_hold:
+            return False
+
+        if self.hold_piece is None:
+            self.hold_piece = Piece(
+                0, 0, self.current_piece.shape_idx
+            )  # Just store shape/color
+            self.current_piece = self.next_piece
+            self.next_piece = self.new_piece()
+        else:
+            temp = self.hold_piece
+            self.hold_piece = Piece(0, 0, self.current_piece.shape_idx)
+            self.current_piece = Piece(
+                GRID_WIDTH // 2 - len(SHAPES[temp.shape_idx][0]) // 2, 0, temp.shape_idx
+            )
+
+        self.can_hold = False
+        # Check if new piece collides immediately
+        if self.check_collision():
+            self.game_over = True
+        return True
+
+    def get_ghost_position(self):
+        ghost_y = self.current_piece.y
+        while not self.check_collision(0, (ghost_y + 1) - self.current_piece.y):
+            ghost_y += 1
+        return ghost_y
+
+
+def draw_block(screen, x, y, color):
+    """Draws a beautiful block with 3D bevels and a sleek dark separator line."""
+    # Main block body
+    pygame.draw.rect(screen, color, (x, y, BLOCK_SIZE, BLOCK_SIZE))
+
+    # Highlight (top and left edges)
+    highlight_color = tuple(min(255, c + 50) for c in color)
+    pygame.draw.line(screen, highlight_color, (x, y), (x + BLOCK_SIZE - 1, y), 2)
+    pygame.draw.line(screen, highlight_color, (x, y), (x, y + BLOCK_SIZE - 1), 2)
+
+    # Shadow (bottom and right edges)
+    shadow_color = tuple(max(0, c - 50) for c in color)
+    pygame.draw.line(screen, shadow_color, (x, y + BLOCK_SIZE - 1), (x + BLOCK_SIZE - 1, y + BLOCK_SIZE - 1), 2)
+    pygame.draw.line(screen, shadow_color, (x + BLOCK_SIZE - 1, y), (x + BLOCK_SIZE - 1, y + BLOCK_SIZE - 1), 2)
+
+    # Sleek dark inner border to separate blocks cleanly
+    pygame.draw.rect(screen, (8, 6, 15), (x, y, BLOCK_SIZE, BLOCK_SIZE), 1)
+
+
+def draw_piece_centered(screen, piece, box_x, box_y, box_w, box_h):
+    """Centers and draws a piece shape inside a bounding box."""
+    if not piece:
+        return
+    shape = piece.shape
+    rows = len(shape)
+    cols = len(shape[0])
+
+    start_x = box_x + (box_w - cols * BLOCK_SIZE) // 2
+    start_y = box_y + (box_h - rows * BLOCK_SIZE) // 2
+
+    for y, row in enumerate(shape):
+        for x, cell in enumerate(row):
+            if cell:
+                draw_block(screen, start_x + x * BLOCK_SIZE, start_y + y * BLOCK_SIZE, piece.color)
+
+
+def draw_text_centered(screen, text_surface, center_x, y):
+    """Draws a rendered text surface centered on a specific X coordinate."""
+    rect = text_surface.get_rect(center=(center_x, y))
+    screen.blit(text_surface, rect)
+
 
 def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Tetris Pro")
+    pygame.display.set_caption("Tetris - Premium Neon Edition")
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont('Arial', 30)
-    
+    game = Tetris()
+
+    # Enable smooth keyboard repeats for responsive gameplay
+    pygame.key.set_repeat(200, 50)
+
+    # Load clean fonts with safe fallbacks
+    pygame.font.init()
+    try:
+        font_large = pygame.font.SysFont(["Segoe UI", "Calibri", "Arial"], 34, bold=True)
+        font_medium = pygame.font.SysFont(["Segoe UI", "Calibri", "Arial"], 22, bold=True)
+        font_small = pygame.font.SysFont(["Segoe UI", "Calibri", "Arial"], 14, bold=True)
+    except Exception:
+        font_large = pygame.font.Font(None, 40)
+        font_medium = pygame.font.Font(None, 28)
+        font_small = pygame.font.Font(None, 18)
+
+    fall_time = 0
     running = True
+
     while running:
-        difficulty_name = show_menu(screen, font)
-        if difficulty_name is None:
-            break
-        
-        difficulty = DIFFICULTIES[difficulty_name]
-        grid: List[List[Any]] = create_grid(GRID_WIDTH, GRID_HEIGHT)
-        current_piece = Piece()
-        next_piece = Piece()
-        score = 0
-        level = 1
-        fall_speed = difficulty["speed"]
-        fall_time = 0
-        game_over = False
-        game_loop_running = True
+        # Limits framerate to 60 FPS and captures elapsed milliseconds
+        dt = clock.tick(60)
 
-        while game_loop_running:
-            dt = clock.tick(60)
+        if not game.paused and not game.game_over:
             fall_time += dt
-            screen.fill(BG_COLOR)
+            # Dynamic fall speed based on current level
+            current_fall_speed = max(100, 500 - (game.level - 1) * 50)
+            if fall_time > current_fall_speed:
+                game.move(0, 1)
+                fall_time = 0
 
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
-            if not game_over:
-                if fall_time > fall_speed:
-                    if not check_collision(grid, current_piece, current_piece.x, current_piece.y + 1):
-                        current_piece.y += 1
-                    else:
-                        for r, row in enumerate(current_piece.shape):
-                            for c, val in enumerate(row):
-                                if val:
-                                    grid[current_piece.y + r][current_piece.x + c] = current_piece.color
-                        
-                        grid, points = clear_lines(grid)
-                        score += points
-                        
-                        if score > level * 1000:
-                            level += 1
-                            fall_speed = max(100, fall_speed - difficulty["dec"])
-                        
-                        current_piece = next_piece
-                        next_piece = Piece()
-                        
-                        if check_collision(grid, current_piece, current_piece.x, current_piece.y):
-                            game_over = True
-                    fall_time = 0
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_p:
+                    game.paused = not game.paused
 
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                        game_loop_running = False
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r:
-                            game_loop_running = False
-                        if not game_over:
-                            if event.key == pygame.K_LEFT:
-                                if not check_collision(grid, current_piece, current_piece.x - 1, current_piece.y):
-                                    current_piece.x -= 1
-                            if event.key == pygame.K_RIGHT:
-                                if not check_collision(grid, current_piece, current_piece.x + 1, current_piece.y):
-                                    current_piece.x += 1
-                            if event.key == pygame.K_UP:
-                                prev_shape = current_piece.shape
-                                current_piece.rotate()
-                                if check_collision(grid, current_piece, current_piece.x, current_piece.y):
-                                    current_piece.shape = prev_shape
-                            if event.key == pygame.K_DOWN:
-                                if not check_collision(grid, current_piece, current_piece.x, current_piece.y + 1):
-                                    current_piece.y += 1
-                            if event.key == pygame.K_SPACE:
-                                while not check_collision(grid, current_piece, current_piece.x, current_piece.y + 1):
-                                    current_piece.y += 1
-                                
-                                for r, row in enumerate(current_piece.shape):
-                                    for c, val in enumerate(row):
-                                        if val:
-                                            grid[current_piece.y + r][current_piece.x + c] = current_piece.color
-                                
-                                grid, points = clear_lines(grid)
-                                score += points
-                                
-                                if score > level * 1000:
-                                    level += 1
-                                    fall_speed = max(100, fall_speed - difficulty["dec"])
-                                
-                                current_piece = next_piece
-                                next_piece = Piece()
-                                
-                                if check_collision(grid, current_piece, current_piece.x, current_piece.y):
-                                    game_over = True
-                                fall_time = 0
+                if game.game_over and event.key == pygame.K_r:
+                    game = Tetris()
 
-            # Draw Grid
-            for y, row in enumerate(grid):
+                if not game.game_over and not game.paused:
+                    if event.key == pygame.K_LEFT:
+                        game.move(-1, 0)
+                    if event.key == pygame.K_RIGHT:
+                        game.move(1, 0)
+                    if event.key == pygame.K_DOWN:
+                        game.move(0, 1)
+                    if event.key == pygame.K_UP:
+                        game.rotate()
+                    if event.key == pygame.K_SPACE:
+                        game.hard_drop()
+                    if event.key == pygame.K_c:
+                        game.hold()
+
+        # Render Phase
+        screen.fill(BACKGROUND_COLOR)
+
+        # 1. Draw Grid Outer Border
+        pygame.draw.rect(
+            screen,
+            BORDER_COLOR,
+            (
+                GRID_X_OFFSET - 2,
+                GRID_Y_OFFSET - 2,
+                GRID_WIDTH * BLOCK_SIZE + 4,
+                GRID_HEIGHT * BLOCK_SIZE + 4,
+            ),
+            2,
+        )
+
+        # Draw Cells
+        for y in range(GRID_HEIGHT):
+            for x in range(GRID_WIDTH):
+                cell_rect = (
+                    x * BLOCK_SIZE + GRID_X_OFFSET,
+                    y * BLOCK_SIZE + GRID_Y_OFFSET,
+                    BLOCK_SIZE,
+                    BLOCK_SIZE,
+                )
+                if game.grid[y][x] == BLACK:
+                    # Draw a nice clean empty cell background
+                    pygame.draw.rect(screen, GRID_BG_COLOR, cell_rect)
+                    pygame.draw.rect(screen, GRID_LINE_COLOR, cell_rect, 1)
+                else:
+                    draw_block(screen, cell_rect[0], cell_rect[1], game.grid[y][x])
+
+        # 2. Draw Active Piece & Ghost Shadow
+        if not game.game_over:
+            # Draw Ghost Piece Outline (Only if not directly overlapping active piece)
+            ghost_y = game.get_ghost_position()
+            if ghost_y > game.current_piece.y:
+                for y, row in enumerate(game.current_piece.shape):
+                    for x, cell in enumerate(row):
+                        if cell:
+                            pygame.draw.rect(
+                                screen,
+                                GHOST_COLOR,
+                                (
+                                    (game.current_piece.x + x) * BLOCK_SIZE + GRID_X_OFFSET,
+                                    (ghost_y + y) * BLOCK_SIZE + GRID_Y_OFFSET,
+                                    BLOCK_SIZE - 1,
+                                    BLOCK_SIZE - 1,
+                                ),
+                                2,  # Outline border width
+                            )
+
+            # Draw Current Active Piece
+            for y, row in enumerate(game.current_piece.shape):
                 for x, cell in enumerate(row):
                     if cell:
-                        pygame.draw.rect(screen, cell, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1))
+                        draw_block(
+                            screen,
+                            (game.current_piece.x + x) * BLOCK_SIZE + GRID_X_OFFSET,
+                            (game.current_piece.y + y) * BLOCK_SIZE + GRID_Y_OFFSET,
+                            game.current_piece.color,
+                        )
 
-            # Draw current piece
-            if not game_over:
-                for r, row in enumerate(current_piece.shape):
-                    for c, val in enumerate(row):
-                        if val:
-                            pygame.draw.rect(screen, current_piece.color, 
-                                              ((current_piece.x + c) * BLOCK_SIZE, 
-                                               (current_piece.y + r) * BLOCK_SIZE, 
-                                               BLOCK_SIZE - 1, BLOCK_SIZE - 1))
+        # 3. Draw Sidebar Panel Card
+        pygame.draw.rect(
+            screen,
+            GRID_BG_COLOR,
+            (SIDEBAR_X, SIDEBAR_Y, SIDEBAR_WIDTH, SIDEBAR_HEIGHT),
+        )
+        pygame.draw.rect(
+            screen,
+            BORDER_COLOR,
+            (SIDEBAR_X, SIDEBAR_Y, SIDEBAR_WIDTH, SIDEBAR_HEIGHT),
+            2,
+        )
 
-            # Draw Right Panel
-            pygame.draw.rect(screen, PANEL_COLOR, (450, 0, 150, SCREEN_HEIGHT))
-            
-            # UI
-            draw_text(screen, f"Score: {score}", font, WHITE, 470, 40)
-            draw_text(screen, f"Level: {level}", font, WHITE, 470, 80)
-            draw_text(screen, f"Diff: {difficulty_name}", font, difficulty["color"], 470, 120)
-            
-            preview_x, preview_y = 460, 200
-            pygame.draw.rect(screen, GRAY, (preview_x, preview_y, 130, 160), 2)
-            pygame.draw.rect(screen, WHITE, (preview_x, preview_y, 130, 20), 1)
-            draw_text(screen, "Next:", font, WHITE, preview_x, 170)
-            
-            piece_w = len(next_piece.shape[0]) * BLOCK_SIZE
-            piece_h = len(next_piece.shape) * BLOCK_SIZE
-            offset_x = (130 - piece_w) // 2
-            offset_y = (140 - piece_h) // 2 + 20
-            
-            for r, row in enumerate(next_piece.shape):
-                for c, val in enumerate(row):
-                    if val:
-                        pygame.draw.rect(screen, next_piece.color, 
-                                          (preview_x + c * BLOCK_SIZE + offset_x, 
-                                           preview_y + r * BLOCK_SIZE + offset_y, 
-                                           BLOCK_SIZE - 1, BLOCK_SIZE - 1))
+        # Display beautiful label-value stat items
+        def draw_stat(lbl_text, val_text, start_y):
+            lbl_surf = font_small.render(lbl_text, True, TEXT_MUTED)
+            val_surf = font_large.render(val_text, True, TEXT_PRIMARY)
+            screen.blit(lbl_surf, (SIDEBAR_X + 25, start_y))
+            screen.blit(val_surf, (SIDEBAR_X + 25, start_y + 18))
 
-            if game_over:
-                draw_text(screen, "GAME OVER", font, RED, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20, True)
-                draw_text(screen, "Press any key to return to menu", font, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30, True)
-                
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                        game_loop_running = False
-                    if event.type == pygame.KEYDOWN:
-                        game_loop_running = False
+        draw_stat("SCORE", f"{game.score}", SIDEBAR_Y + 20)
+        draw_stat("LEVEL", f"{game.level}", SIDEBAR_Y + 85)
+        draw_stat("LINES CLEARED", f"{game.lines_cleared}", SIDEBAR_Y + 150)
 
-            pygame.display.flip()
+        # 4. Next Piece Preview Panel
+        next_lbl = font_small.render("NEXT PIECE", True, TEXT_MUTED)
+        screen.blit(next_lbl, (SIDEBAR_X + 25, SIDEBAR_Y + 225))
+
+        next_box_x = SIDEBAR_X + 25
+        next_box_y = SIDEBAR_Y + 248
+        next_box_size = 110
+        pygame.draw.rect(screen, BACKGROUND_COLOR, (next_box_x, next_box_y, next_box_size, next_box_size))
+        pygame.draw.rect(screen, BORDER_COLOR, (next_box_x, next_box_y, next_box_size, next_box_size), 1)
+        if not game.game_over:
+            draw_piece_centered(screen, game.next_piece, next_box_x, next_box_y, next_box_size, next_box_size)
+
+        # 5. Hold Piece Preview Panel
+        hold_lbl = font_small.render("HOLD PIECE", True, TEXT_MUTED)
+        screen.blit(hold_lbl, (SIDEBAR_X + 25, SIDEBAR_Y + 380))
+
+        hold_box_x = SIDEBAR_X + 25
+        hold_box_y = SIDEBAR_Y + 403
+        hold_box_size = 110
+        pygame.draw.rect(screen, BACKGROUND_COLOR, (hold_box_x, hold_box_y, hold_box_size, hold_box_size))
+        pygame.draw.rect(screen, BORDER_COLOR, (hold_box_x, hold_box_y, hold_box_size, hold_box_size), 1)
+        if not game.game_over and game.hold_piece:
+            draw_piece_centered(screen, game.hold_piece, hold_box_x, hold_box_y, hold_box_size, hold_box_size)
+
+        # Keyboard Controls Legend
+        instructions = [
+            "← / → : Move Left / Right",
+            "↓ : Soft Drop",
+            "Space : Hard Drop",
+            "↑ : Rotate Piece",
+            "C : Hold Piece",
+            "P : Pause / Resume",
+        ]
+        inst_y = SIDEBAR_Y + 520
+        for inst in instructions:
+            inst_surf = font_small.render(inst, True, TEXT_MUTED)
+            screen.blit(inst_surf, (SIDEBAR_X + 20, inst_y))
+            inst_y += 18
+
+        # 6. Overlay Screen (Paused or Game Over)
+        if game.game_over or game.paused:
+            # Draw dark semi-transparent screen over grid play area only
+            overlay = pygame.Surface((GRID_WIDTH * BLOCK_SIZE, GRID_HEIGHT * BLOCK_SIZE))
+            overlay.set_alpha(200)
+            overlay.fill(BACKGROUND_COLOR)
+            screen.blit(overlay, (GRID_X_OFFSET, GRID_Y_OFFSET))
+
+            grid_center_x = GRID_X_OFFSET + (GRID_WIDTH * BLOCK_SIZE) // 2
+
+            if game.game_over:
+                over_surf = font_large.render("GAME OVER", True, (255, 46, 99))
+                score_final_surf = font_medium.render(f"Final Score: {game.score}", True, TEXT_PRIMARY)
+                restart_surf = font_medium.render("Press 'R' to Restart", True, TEXT_MUTED)
+
+                draw_text_centered(screen, over_surf, grid_center_x, GRID_Y_OFFSET + 220)
+                draw_text_centered(screen, score_final_surf, grid_center_x, GRID_Y_OFFSET + 280)
+                draw_text_centered(screen, restart_surf, grid_center_x, GRID_Y_OFFSET + 340)
+
+            elif game.paused:
+                pause_surf = font_large.render("PAUSED", True, (0, 229, 255))
+                resume_surf = font_medium.render("Press 'P' to Resume", True, TEXT_PRIMARY)
+
+                draw_text_centered(screen, pause_surf, grid_center_x, GRID_Y_OFFSET + 260)
+                draw_text_centered(screen, resume_surf, grid_center_x, GRID_Y_OFFSET + 320)
+
+        pygame.display.flip()
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()

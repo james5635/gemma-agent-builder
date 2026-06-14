@@ -26,17 +26,34 @@ private:
     std::string winner;
 
 public:
-    TicTacToe() : 
+    TicTacToe() :
         window(sf::VideoMode({(unsigned int)WIDTH, (unsigned int)HEIGHT}), "Tic-Tac-Toe (SFML 3)"),
         board(3, std::vector<std::string>(3, "")),
         current_player("X"),
         game_over(false),
-        winner("") 
+        winner("")
     {
         window.setFramerateLimit(60);
-        
-        if (!font.openFromFile("Arial.ttf")) {
-            std::cerr << "Error: Could not load 'Arial.ttf'. Please place it in the executable directory." << std::endl;
+
+        std::vector<std::string> system_fonts = {
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/ttf-linux-libertine/LinLibertine_I.ttf",
+            "Arial.ttf"
+        };
+
+        bool loaded = false;
+        for (const auto& font_path : system_fonts) {
+            if (font.openFromFile(font_path)) {
+                std::cout << "Successfully loaded font: " << font_path << std::endl;
+                loaded = true;
+                break;
+            }
+        }
+
+        if (!loaded) {
+            std::cerr << "Error: Could not load any system fonts. Please place 'Arial.ttf' in the executable directory." << std::endl;
         }
     }
 
@@ -48,7 +65,7 @@ public:
     }
 
     void draw_lines() {
-        sf::VertexArray lines(sf::Lines, 8);
+        sf::VertexArray lines(sf::PrimitiveType::Lines, 8);
         lines[0].position = { (float)SQUARE_SIZE, 0.f };
         lines[1].position = { (float)SQUARE_SIZE, (float)HEIGHT };
         lines[2].position = { (float)SQUARE_SIZE * 2, 0.f };
@@ -103,48 +120,31 @@ public:
 
     void run() {
         while (window.isOpen()) {
-            sf::Event event;
             while (auto ev = window.pollEvent()) {
                 if (ev->is<sf::Event::Closed>()) {
                     window.close();
                 }
                 if (ev->is<sf::Event::MouseButtonPressed>()) {
-                    const auto& mouse_button = ev->get_if<sf::Event::MouseButtonPressed>()->button;
-                    if (mouse_button == sf::Mouse::Left) {
-                        const auto& mouse_pos = ev->get_if<sf::Event::MouseButtonPressed>()->position;
+                    const auto* mouse_event = ev->getIf<sf::Event::MouseButtonPressed>();
+                    if (mouse_event && mouse_event->button == sf::Mouse::Button::Left && !game_over) {
+                        const auto& mouse_pos = mouse_event->position;
                         int row = mouse_pos.y / SQUARE_SIZE;
                         int col = mouse_pos.x / SQUARE_SIZE;
 
                         if (row >= 0 && row < 3 && col >= 0 && col < 3 && board[row][col] == "") {
-                            board[row][col] = "X";
+                            board[row][col] = current_player;
                             std::string res = check_winner();
                             if (res != "") {
                                 game_over = true;
                                 winner = res;
                             } else {
-                                current_player = "O";
-                                for (int r = 0; r < 3; ++r) {
-                                    for (int c = 0; c < 3; ++c) {
-                                        if (board[r][c] == "") {
-                                            board[r][c] = "O";
-                                            std::string res2 = check_winner();
-                                            if (res2 != "") {
-                                                game_over = true;
-                                                winner = res2;
-                                            } else {
-                                                current_player = "X";
-                                            }
-                                            break;
-                                        }
-                                    }
-                                    if (board[row][col] != "") break;
-                                }
+                                current_player = (current_player == "X") ? "O" : "X";
                             }
                         }
                     }
                 }
                 if (ev->is<sf::Event::KeyPressed>()) {
-                    if (ev->get_if<sf::Event::KeyPressed>()->key == sf::Keyboard::R) {
+                    if (ev->getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::R) {
                         restart_game();
                     }
                 }
@@ -155,7 +155,8 @@ public:
             draw_symbols();
 
             if (game_over) {
-                sf::Text msg(font, (winner == "Draw" ? "Draw!" : winner + " Wins!"), 40);
+                sf::String win_text = (winner == "Draw") ? "Draw!" : (sf::String(winner) + " Wins!");
+                sf::Text msg(font, win_text, 40);
                 msg.setFillColor(TEXT_COLOR);
                 msg.setPosition({WIDTH / 2.0f - msg.getGlobalBounds().size.x / 2.0f, HEIGHT / 2.0f - msg.getGlobalBounds().size.y / 2.0f});
                 window.draw(msg);

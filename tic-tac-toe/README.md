@@ -27,6 +27,3 @@ sudo pacman -Sy sfml # for arch linux
 g++ tic-tac-toe.cpp -otic-tac-toe -lsfml-graphics -lsfml-window -lsfml-system
 ./tic-tac-toe
 ```
-
-# TODO
-fix cpp version

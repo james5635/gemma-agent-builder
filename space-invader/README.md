@@ -13,6 +13,3 @@ This is space invader game.
 python space_invaders.py
 ```
 
-# TODO
-
-rebuild 

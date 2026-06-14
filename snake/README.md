@@ -10,10 +10,7 @@ This is snake game.
 # Run the game 
 
 ```sh
-g++ snake.cpp -osnake
-./snake
+g++ snake_sfml.cpp -osnake_sfml -lsfml-graphics -lsfml-window -lsfml-system
+./snake_sfml
 ```
 
-# TODO
-
-make sfml version
